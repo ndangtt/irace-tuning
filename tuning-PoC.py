@@ -4,47 +4,58 @@
 
 from irace import irace, Parameters, Param, Categorical, Symbol
 from irace.compatibility.config_space import convert_from_config_space
-from irace.expressions import List
 import numpy as np
 from surrogate import convert_params_to_vec
 import json
 from ConfigSpace.read_and_write import pcs
 from pyrfr import regression
-from rpy2.robjects.packages import importr
-from rpy2.robjects import StrVector
-from utils import suppress_stdout, suppress_stderr
 from multiprocessing import cpu_count
+from utils import suppress_stdout
 import pandas as pd
 
+# Helper functions
 def get_training_experiment(instances):
+    '''Get the training instances for the target irace'''
     return instances[:len(instances) // 3]
 
 def get_training_validation(instances):
+    '''Get the validation instances for validating the performance of target irace'''
     return instances[len(instances) // 3: len(instances) // 3 * 2]
 
 def get_training_meta_validation(instances):
-    return instances[len(instances) // 3:]
-
-with open('./target_algorithms/surrogate/cplex_regions200/config_space.cplex_regions200.par10.random.pcs') as f:
-    cs = pcs.read(f)
-
-# Load the list of instance features
-with open('./target_algorithms/surrogate/cplex_regions200/inst_feat_dict.cplex_regions200.par10.random.json') as f:
-    instances_features = json.load(f)
-
-
-instances = list(instances_features.keys())
-
-# Load the random forest model
-model = regression.binary_rss_forest()
-model.load_from_binary_file('./target_algorithms/surrogate/cplex_regions200/pyrfr_model.cplex_regions200.par10.random.bin')
+    '''Get the validation instances for the meta irace'''
+    return instances[len(instances) // 3 * 2:]
 
 def filter_nan(config):
     return dict([
         (k, v) for k, v in config.items() if not pd.isna(v)
     ])
 
+# Load parameters as ConfigSpace.ConfigurationSpace
+with open('./target_algorithms/surrogate/cplex_regions200/config_space.cplex_regions200.par10.random.pcs') as f:
+    cs = pcs.read(f)
+
+# Load the list of instance features
+with open('./target_algorithms/surrogate/cplex_regions200/inst_feat_dict.cplex_regions200.par10.random.json') as f:
+    instances_features = json.load(f)
+instances = list(instances_features.keys())
+
+# Load the random forest model
+model = regression.binary_rss_forest()
+model.load_from_binary_file('./target_algorithms/surrogate/cplex_regions200/pyrfr_model.cplex_regions200.par10.random.bin')
+
+
 def predict_surrogate(configuration, instance):
+    '''
+    Predict the performance of a giving configuration on an instance using the surrogate model.
+
+    Args:
+        configuration: A dictionary of configuration
+        instance: A string of the instance name
+    
+    Returns:
+        The performance as a floating number by the surrogate model
+    '''
     instance_feature = instances_features[instance]['__ndarray__']
     # Call the magic function to convert configurations to a vector
     encoded_configurations = convert_params_to_vec(filter_nan(configuration), cs)
@@ -52,18 +63,15 @@ def predict_surrogate(configuration, instance):
     return model.predict(x)
 
 def target_irace(experiment, scenario):
-    print('started target_irace')
-    import json
+    '''
+    The target runner for the irace being tuned
+    '''
+
     def surrogate_target_runner(experiment, scenario):
-        with open('abc.json', 'w') as f:
-            json.dump(experiment, f)
-        with open('db.json', 'w') as f:
-            json.dump(list(scenario.keys()), f)
         instance = experiment['instance']
         configuration = dict(experiment['configuration'])
         return dict(cost=predict_surrogate(configuration, instance))
   
-
     scenario = dict(
         instances = get_training_experiment(instances),
         maxExperiments = 1008,
@@ -77,6 +85,7 @@ def target_irace(experiment, scenario):
     
     scenario.update(dict(experiment['configuration']))
 
+    # When capping == TRUE, elitist must be enabled. So when capping == True, I just set elitist == 1 and ignore the meta irace settings.
     if scenario['capping'] == '1':
         scenario['elitist'] = '1'
 
@@ -84,13 +93,14 @@ def target_irace(experiment, scenario):
 
     with suppress_stdout():
         best_configs: pd.DataFrame = tuner.run()
-    
+
+    # Get a single configuration as the best config.
     best_config = best_configs.to_dict(orient='records')[0]
 
-    # TODO: Consider how we can move this to iracepy
-
-
     def validate(config):
+        '''
+        Get the performance of a configuration on the validation set
+        '''
         validation_instances = get_training_validation(instances)
         sum = 0
         for instance in validation_instances:
