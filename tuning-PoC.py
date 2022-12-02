@@ -39,7 +39,20 @@ instances = list(instances_features.keys())
 model = regression.binary_rss_forest()
 model.load_from_binary_file('./target_algorithms/surrogate/cplex_regions200/pyrfr_model.cplex_regions200.par10.random.bin')
 
+def filter_nan(config):
+    return dict([
+        (k, v) for k, v in config.items() if not pd.isna(v)
+    ])
+
+def predict_surrogate(configuration, instance):
+    instance_feature = instances_features[instance]['__ndarray__']
+    # Call the magic function to convert configurations to a vector
+    encoded_configurations = convert_params_to_vec(filter_nan(configuration), cs)
+    x = np.hstack([encoded_configurations, instance_feature])
+    return model.predict(x)
+
 def target_irace(experiment, scenario):
+    print('started target_irace')
     import json
     def surrogate_target_runner(experiment, scenario):
         with open('abc.json', 'w') as f:
@@ -48,11 +61,7 @@ def target_irace(experiment, scenario):
             json.dump(list(scenario.keys()), f)
         instance = experiment['instance']
         configuration = dict(experiment['configuration'])
-        instance_feature = instances_features[instance]['__ndarray__']
-        # Call the magic function to convert configurations to a vector
-        encoded_configurations = convert_params_to_vec(configuration, cs)
-        x = np.hstack([encoded_configurations, instance_feature])
-        return dict(cost=model.predict(x))
+        return dict(cost=predict_surrogate(configuration, instance))
   
 
     scenario = dict(
@@ -73,8 +82,22 @@ def target_irace(experiment, scenario):
 
     tuner = irace(scenario, convert_from_config_space(cs), surrogate_target_runner)
 
-    best_configs = tuner.run()
-    return dict(cost=1)
+    with suppress_stdout():
+        best_configs: pd.DataFrame = tuner.run()
+    
+    best_config = best_configs.to_dict(orient='records')[0]
+
+    # TODO: Consider how we can move this to iracepy
+
+
+    def validate(config):
+        validation_instances = get_training_validation(instances)
+        sum = 0
+        for instance in validation_instances:
+            sum += predict_surrogate(config, instance)
+        return sum / len(validation_instances)
+    
+    return dict(cost=validate(best_config))
 
 
 params = Parameters()
@@ -86,17 +109,10 @@ params.elitist = Param(Categorical(('0', '1')))
 
 scenario = dict(
     instances = np.arange(1),
-    maxExperiments = 1008,
+    maxExperiments = 180,
     debugLevel = 0,
-    parallel = 1,
+    parallel = 2,
     digits = 15,
-    capping = 1,
-    boundMax = 1000,
-    cappingType = "median",
-    boundType = "candidate",
-    testType = "f-test",
-    elitist = 1,
-    logFile = '', 
     seed = 123
     )
 
@@ -109,11 +125,6 @@ defaults = pd.DataFrame(data=dict(
 
 
 tuner = irace(scenario, params, target_irace)
-tuner.run()
-target_irace(dict(configuration = dict(
-    capping = 0,
-    cappingType = 'mean',
-    boundType = 'candidate',
-    testType = 'f-test',
-    elitist = 0
-)), None)
+best_config = tuner.run()
+
+print(best_config)
