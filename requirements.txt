@@ -2,3 +2,4 @@ ConfigSpace
 numpy
 ipykernel
 pyrfr
+git+https://github.com/DE0CH/iracepy@main
