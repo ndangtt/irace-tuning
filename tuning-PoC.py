@@ -2,7 +2,7 @@
 # coding: utf-8
 
 
-from irace import irace
+from irace import irace, Parameters, Param, Categorical, Symbol
 from irace.compatibility.config_space import convert_from_config_space
 from irace.expressions import List
 import numpy as np
@@ -14,6 +14,7 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import StrVector
 from utils import suppress_stdout, suppress_stderr
 from multiprocessing import cpu_count
+import pandas as pd
 
 def get_training_experiment(instances):
     return instances[:len(instances) // 3]
@@ -60,23 +61,55 @@ def target_irace(experiment, scenario):
         debugLevel = 0,
         parallel = cpu_count(),
         digits = 15,
-        capping = 1,
         boundMax = 1000,
-        cappingType = "median",
-        boundType = "candidate",
-        testType = "f-test",
-        elitist = 1,
-        logFile = ''
+        logFile = '', 
+        seed = experiment['seed']
     )
     
     scenario.update(dict(experiment['configuration']))
 
+    if scenario['capping'] == '1':
+        scenario['elitist'] = '1'
+
     tuner = irace(scenario, convert_from_config_space(cs), surrogate_target_runner)
 
     best_configs = tuner.run()
-    print(best_configs)
+    return dict(cost=1)
 
 
+params = Parameters()
+params.capping = Param(Categorical(('0', '1')))
+params.cappingType = Param(Categorical(('median', 'mean', 'worst', 'best')), condition=Symbol('capping') == '1')
+params.boundType = Param(Categorical(('candidate', 'instance')), condition=Symbol('capping') == '1')
+params.testType = Param(Categorical(('f-test', 't-test')))
+params.elitist = Param(Categorical(('0', '1')))
+
+scenario = dict(
+    instances = np.arange(1),
+    maxExperiments = 1008,
+    debugLevel = 0,
+    parallel = 1,
+    digits = 15,
+    capping = 1,
+    boundMax = 1000,
+    cappingType = "median",
+    boundType = "candidate",
+    testType = "f-test",
+    elitist = 1,
+    logFile = '', 
+    seed = 123
+    )
+
+defaults = pd.DataFrame(data=dict(
+    capping = [0],
+    cappingType = ['median'],
+    boundType = ['candidate'], 
+    elitist = [1]
+))
+
+
+tuner = irace(scenario, params, target_irace)
+tuner.run()
 target_irace(dict(configuration = dict(
     capping = 0,
     cappingType = 'mean',
