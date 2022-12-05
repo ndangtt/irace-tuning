@@ -14,15 +14,19 @@ from utils import suppress_stdout
 import pandas as pd
 
 # Helper functions
-def get_training_experiment(instances):
+def get_instances_training(instances):
     '''Get the training instances for the target irace'''
     return instances[:len(instances) // 3]
 
-def get_training_validation(instances):
+def get_instances_validation(instances):
     '''Get the validation instances for validating the performance of target irace'''
     return instances[len(instances) // 3: len(instances) // 3 * 2]
 
-def get_training_meta_validation(instances):
+def get_instances_meta_training(instances):
+    '''Get the set of instance for the irace with the best configuration to train on. Currently it equals to the training instances'''
+    return instances[:len(instances) // 3]
+
+def get_instances_meta_validation(instances):
     '''Get the validation instances for the meta irace'''
     return instances[len(instances) // 3 * 2:]
 
@@ -69,12 +73,14 @@ def target_irace(experiment, scenario):
 
     def surrogate_target_runner(experiment, scenario):
         instance = experiment['instance']
+        bound = experiment['bound']
         configuration = dict(experiment['configuration'])
-        return dict(cost=predict_surrogate(configuration, instance))
+        cost = predict_surrogate(configuration, instance)
+        return dict(cost=cost, time=max(0, min(bound + 1, cost)))
   
     scenario = dict(
-        instances = get_training_experiment(instances),
-        maxExperiments = 1008,
+        instances = get_instances_training(instances),
+        maxExperiments = 3000,
         debugLevel = 0,
         parallel = cpu_count(),
         digits = 15,
@@ -84,10 +90,6 @@ def target_irace(experiment, scenario):
     )
     
     scenario.update(dict(experiment['configuration']))
-
-    # When capping == TRUE, elitist must be enabled. So when capping == True, I just set elitist == 1 and ignore the meta irace settings.
-    if scenario['capping'] == '1':
-        scenario['elitist'] = '1'
 
     tuner = irace(scenario, convert_from_config_space(cs), surrogate_target_runner)
 
@@ -101,7 +103,7 @@ def target_irace(experiment, scenario):
         '''
         Get the performance of a configuration on the validation set
         '''
-        validation_instances = get_training_validation(instances)
+        validation_instances = get_instances_validation(instances)
         sum = 0
         for instance in validation_instances:
             sum += predict_surrogate(config, instance)
@@ -111,19 +113,20 @@ def target_irace(experiment, scenario):
 
 
 params = Parameters()
-params.capping = Param(Categorical(('0', '1')))
+params.capping = Param(Categorical(('0', '1')), condition=Symbol('elitist') == '1')
 params.cappingType = Param(Categorical(('median', 'mean', 'worst', 'best')), condition=Symbol('capping') == '1')
 params.boundType = Param(Categorical(('candidate', 'instance')), condition=Symbol('capping') == '1')
 params.testType = Param(Categorical(('f-test', 't-test')))
 params.elitist = Param(Categorical(('0', '1')))
 
 scenario = dict(
-    instances = np.arange(1),
-    maxExperiments = 180,
+    instances = ['no-instance'], # FIXME: workaround for auto-optimization/iraceplot#32
+    maxExperiments = 2000,
     debugLevel = 0,
     parallel = 2,
     digits = 15,
-    seed = 123
+    seed = 123,
+    logFile = "log.Rdata"
     )
 
 defaults = pd.DataFrame(data=dict(
