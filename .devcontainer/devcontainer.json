@@ -22,9 +22,12 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"streetsidesoftware.code-spell-checker"
+				"streetsidesoftware.code-spell-checker",
+				"ms-toolsai.jupyter",
+				"ms-python.python"
 			]
 		}
-	}
+	},
+	"postCreateCommand": "pip3 install -r requirements.txt"
 
 }

@@ -9,8 +9,10 @@ RUN useradd -m vscode -s /bin/zsh
 USER vscode 
 RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/DE0CH/dotfiles/master/setup-zsh.sh)"
 RUN echo 'eval $(thefuck --alias)' >> /home/vscode/.zshrc
+RUN echo 'export LC_ALL=C' >> /home/vscode/.zshenv
 WORKDIR /home/vscode
 
 USER root
 # Project specific stuff
-RUN apt-get install -y python3 python3-pip unzip
+RUN apt-get install -y r-base python3 python3-pip r-cran-devtools
+RUN Rscript -e "devtools::install_github('DE0CH/irace')"
