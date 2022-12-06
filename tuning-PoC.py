@@ -66,6 +66,10 @@ def predict_surrogate(configuration, instance):
     x = np.hstack([encoded_configurations, instance_feature])
     return model.predict(x)
 
+threads = cpu_count()
+training_instances = get_instances_training(instances)
+parameters = convert_from_config_space(cs)
+validation_instances = get_instances_validation(instances)
 def target_irace(experiment, scenario):
     '''
     The target runner for the irace being tuned
@@ -79,10 +83,10 @@ def target_irace(experiment, scenario):
         return dict(cost=cost, time=max(0, min(bound + 1, cost)))
   
     scenario = dict(
-        instances = get_instances_training(instances),
+        instances = training_instances,
         maxExperiments = 3000,
         debugLevel = 0,
-        parallel = cpu_count(),
+        parallel = threads,
         digits = 15,
         boundMax = 1000,
         logFile = '', 
@@ -91,7 +95,7 @@ def target_irace(experiment, scenario):
     
     scenario.update(dict(experiment['configuration']))
 
-    tuner = irace(scenario, convert_from_config_space(cs), surrogate_target_runner)
+    tuner = irace(scenario, parameters, surrogate_target_runner)
 
     with suppress_stdout():
         best_configs: pd.DataFrame = tuner.run()
@@ -103,7 +107,6 @@ def target_irace(experiment, scenario):
         '''
         Get the performance of a configuration on the validation set
         '''
-        validation_instances = get_instances_validation(instances)
         sum = 0
         for instance in validation_instances:
             sum += predict_surrogate(config, instance)
