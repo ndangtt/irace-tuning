@@ -64,7 +64,8 @@ def predict_surrogate(configuration, instance):
     # Call the magic function to convert configurations to a vector
     encoded_configurations = convert_params_to_vec(filter_nan(configuration), cs)
     x = np.hstack([encoded_configurations, instance_feature])
-    return model.predict(x)
+    y = model.predict(x)
+    return 10**y
 
 threads = cpu_count()
 training_instances = get_instances_training(instances)
@@ -80,7 +81,7 @@ def target_irace(experiment, scenario):
         bound = experiment['bound']
         configuration = dict(experiment['configuration'])
         cost = predict_surrogate(configuration, instance)
-        return dict(cost=cost, time=max(0, min(bound + 1, cost)))
+        return dict(cost=cost, time=min(bound + 1, cost))
   
     scenario = dict(
         instances = training_instances,
