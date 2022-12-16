@@ -12,6 +12,7 @@ from pyrfr import regression
 from multiprocessing import cpu_count
 from utils import suppress_stdout
 import pandas as pd
+import rpy2.robjects as ro
 
 # Helper functions
 def get_instances_training(instances):
@@ -71,18 +72,18 @@ threads = cpu_count()
 training_instances = get_instances_training(instances)
 parameters = convert_from_config_space(cs)
 validation_instances = get_instances_validation(instances)
+
+def surrogate_target_runner(experiment, scenario):
+    instance = experiment['instance']
+    bound = experiment['bound']
+    configuration = dict(experiment['configuration'])
+    cost = predict_surrogate(configuration, instance)
+    return dict(cost=cost, time=min(bound + 1, cost))
+
 def target_irace(experiment, scenario):
     '''
     The target runner for the irace being tuned
-    '''
-
-    def surrogate_target_runner(experiment, scenario):
-        instance = experiment['instance']
-        bound = experiment['bound']
-        configuration = dict(experiment['configuration'])
-        cost = predict_surrogate(configuration, instance)
-        return dict(cost=cost, time=min(bound + 1, cost))
-  
+    '''  
     scenario = dict(
         instances = training_instances,
         maxExperiments = 3000,
@@ -140,8 +141,19 @@ defaults = pd.DataFrame(data=dict(
     elitist = [1]
 ))
 
+if __name__=="__main__":
 
-tuner = irace(scenario, params, target_irace)
-best_config = tuner.run()
+    tuner = irace(scenario, params, target_irace)
+    defaults = "capping cappingType boundType elitist testType\n0 NA NA 1 'f-test'"
+    tuner.set_initial_from_str(defaults)
+    tuner.scenario["initConfigurations"]
+    conf = scenario["initConfigurations"]
+    conf["cappingType"] = [ro.NA_Integer]
+    conf["boundType"] = [ro.NA_Integer]
+    conf = conf.astype([('elitist', 'O'), ('testType', 'O'), ('capping', 'O'), ('boundType', int), ('cappingType', int)])
+    tuner.scenario["initConfigurations"] = conf
+    best_config = tuner.run()
 
-print(best_config)
+    print(best_config)
+
+
