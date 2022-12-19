@@ -1,0 +1,6 @@
+.ID.,elitist,testType,capping,boundType,cappingType,.PARENT.,performance
+1,1,f-test,0,,,,"[3.8270467892874036, 6.6107985468774855]"
+210,1,f-test,1,instance,median,7.0,"[3.500206621261756, 4.077425144964908]"
+7,1,f-test,1,candidate,median,,
+31,1,t-test,1,candidate,median,,
+645,1,f-test,1,candidate,mean,557.0,
